@@ -6,7 +6,7 @@ const app = express();
 
 const allowedOrigins = [
   "http://localhost:5173", // local dev
-  "https://your-app-name.vercel.app", // production
+  "https://youtube-to-mp3-4k0i.onrender.com", // production
 ];
 
 app.use(express.json());
