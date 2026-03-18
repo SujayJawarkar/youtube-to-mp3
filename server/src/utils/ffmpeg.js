@@ -1,13 +1,14 @@
 const ffmpeg = require("fluent-ffmpeg");
 const path = require("path");
 
-// Point fluent-ffmpeg to your local ffmpeg binary
-const ffmpegPath = path.join(__dirname, "../../bin/ffmpeg.exe");
-ffmpeg.setFfmpegPath(ffmpegPath);
+// On Windows use local binary, on Linux use system ffmpeg
+if (process.platform === "win32") {
+  const ffmpegPath = path.join(__dirname, "../../bin/ffmpeg.exe");
+  ffmpeg.setFfmpegPath(ffmpegPath);
+}
 
 const convertToMp3 = (inputPath, outputPath, quality) => {
   return new Promise((resolve, reject) => {
-    // quality is '128' or '320'
     ffmpeg(inputPath)
       .audioBitrate(quality)
       .toFormat("mp3")
