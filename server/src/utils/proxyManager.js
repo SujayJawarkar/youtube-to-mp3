@@ -1,5 +1,3 @@
-// You can get free proxies from https://www.webshare.io (free tier = 10 proxies)
-// Or use any proxy provider and add them here
 const proxies = process.env.PROXIES ? process.env.PROXIES.split(",") : [];
 
 let currentIndex = 0;
