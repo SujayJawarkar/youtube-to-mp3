@@ -3,11 +3,11 @@ const router = express.Router();
 const path = require("path");
 const fs = require("fs");
 const { v4: uuidv4 } = require("uuid");
-const { getVideoInfo, downloadAudio } = require("../utils/ytdlp.js");
-const { convertToMp3 } = require("../utils/ffmpeg.js");
+const { getVideoInfo, extractVideoId } = require("../utils/youtube.js");
+const { downloadMp3 } = require("../utils/rapidapi.js");
 
 const tempDir = path.join(__dirname, "../../temp");
-const jobTitles = {}; // stores jobId → video title
+const jobTitles = {};
 
 // POST /api/info
 router.post("/info", async (req, res) => {
@@ -26,40 +26,27 @@ router.post("/info", async (req, res) => {
 // POST /api/convert
 router.post("/convert", async (req, res) => {
   const { url, quality } = req.body;
-
   if (!url || !quality) {
     return res.status(400).json({ error: "URL and quality are required" });
   }
 
   const jobId = uuidv4();
-  const rawAudioPath = path.join(tempDir, `${jobId}.webm`);
   const mp3Path = path.join(tempDir, `${jobId}.mp3`);
 
   try {
-    // Step 1 - Fetch video info to get title
+    // Step 1 - Get video info for title
     console.log("Fetching video info...");
     const info = await getVideoInfo(url);
-    const videoTitle = info.title;
+    jobTitles[jobId] = info.title;
 
-    // Store title against jobId
-    jobTitles[jobId] = videoTitle;
-
-    // Step 2 - Download raw audio
-    console.log("Downloading audio...");
-    await downloadAudio(url, rawAudioPath);
-
-    // Step 3 - Convert to MP3
-    console.log("Converting to MP3...");
-    await convertToMp3(rawAudioPath, mp3Path, quality);
-
-    // Step 4 - Delete raw audio
-    fs.unlinkSync(rawAudioPath);
+    // Step 2 - Download MP3 via RapidAPI
+    console.log("Downloading MP3 via RapidAPI...");
+    await downloadMp3(info.videoId, mp3Path, quality);
 
     console.log("Done! Job ID:", jobId);
-    res.json({ jobId, title: videoTitle });
+    res.json({ jobId, title: info.title });
   } catch (error) {
     console.error("Conversion error:", error.message);
-    if (fs.existsSync(rawAudioPath)) fs.unlinkSync(rawAudioPath);
     if (fs.existsSync(mp3Path)) fs.unlinkSync(mp3Path);
     res.status(500).json({ error: "Conversion failed." });
   }
@@ -79,29 +66,24 @@ router.get("/stream/:jobId", (req, res) => {
   const range = req.headers.range;
 
   if (range) {
-    // Handle range requests — needed for audio seeking in browser
     const parts = range.replace(/bytes=/, "").split("-");
     const start = parseInt(parts[0], 10);
     const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
     const chunkSize = end - start + 1;
 
     const fileStream = fs.createReadStream(mp3Path, { start, end });
-
     res.writeHead(206, {
       "Content-Range": `bytes ${start}-${end}/${fileSize}`,
       "Accept-Ranges": "bytes",
       "Content-Length": chunkSize,
       "Content-Type": "audio/mpeg",
     });
-
     fileStream.pipe(res);
   } else {
-    // No range — stream the whole file
     res.writeHead(200, {
       "Content-Length": fileSize,
       "Content-Type": "audio/mpeg",
     });
-
     fs.createReadStream(mp3Path).pipe(res);
   }
 });
@@ -115,17 +97,12 @@ router.get("/download/:jobId", (req, res) => {
     return res.status(404).json({ error: "File not found" });
   }
 
-  // Use stored title or fallback to 'audio'
   const title = jobTitles[jobId] || "audio";
-
-  // Sanitize title — remove characters that are invalid in filenames
   const safeTitle = title.replace(/[^a-z0-9\-_ ]/gi, "").trim();
   const fileName = `${safeTitle}.mp3`;
 
   res.download(mp3Path, fileName, (err) => {
     if (err) console.error("Download error:", err.message);
-
-    // Cleanup
     delete jobTitles[jobId];
     fs.unlink(mp3Path, (unlinkErr) => {
       if (unlinkErr) console.error("Cleanup error:", unlinkErr.message);
