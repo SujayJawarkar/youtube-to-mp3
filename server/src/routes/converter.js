@@ -7,6 +7,13 @@ const { getVideoInfo, extractVideoId } = require("../utils/youtube.js");
 const { downloadMp3 } = require("../utils/rapidapi.js");
 
 const tempDir = path.join(__dirname, "../../temp");
+
+// Create temp directory if it doesn't exist
+if (!fs.existsSync(tempDir)) {
+  fs.mkdirSync(tempDir, { recursive: true });
+  console.log("✅ temp directory created");
+}
+
 const jobTitles = {};
 
 // POST /api/info
